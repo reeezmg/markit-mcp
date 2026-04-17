@@ -1,0 +1,31 @@
+{
+  "name": "markit-mcp",
+  "version": "1.0.0",
+  "description": "Markit MCP tools — direct-import library + MCP stdio server",
+  "main": "dist/lib.js",
+  "files": ["dist/lib.js"],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:pg --external:pg-native && esbuild src/lib.ts --bundle --platform=node --target=node20 --outfile=dist/lib.js --external:pg --external:pg-native --format=cjs",
+    "build:server": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:pg --external:pg-native",
+    "build:lib": "esbuild src/lib.ts --bundle --platform=node --target=node20 --outfile=dist/lib.js --external:pg --external:pg-native --format=cjs",
+    "prepare": "npm run build:lib",
+    "start": "node dist/index.js",
+    "dev": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:pg --external:pg-native --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.15.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "pg": "^8.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "cross-env": "^10.1.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.5.0"
+  }
+}
