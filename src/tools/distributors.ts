@@ -26,6 +26,7 @@ export const distributorTools = [
       }
       const { rows } = await pool.query(
         `SELECT d.id, d.name, d.status, d.gstin,
+                dc.distributor_number,
                 dc.opening_due,
                 dc.opening_due_date,
                 COUNT(DISTINCT po.id)::int AS po_count,
@@ -43,7 +44,7 @@ export const distributorTools = [
          JOIN distributors d ON dc.distributor_id = d.id
          LEFT JOIN purchase_orders po ON po.distributor_id = d.id AND po.company_id = dc.company_id
          WHERE dc.company_id = $1 ${nameFilter}
-         GROUP BY d.id, d.name, d.status, d.gstin, dc.opening_due, dc.opening_due_date
+         GROUP BY d.id, d.name, d.status, d.gstin, dc.distributor_number, dc.opening_due, dc.opening_due_date
          ORDER BY d.name`,
         params
       );
@@ -69,7 +70,7 @@ export const distributorTools = [
       const { rows } = await pool.query(
         `SELECT d.id, d.name, d.status, d.gstin,
                 d.acc_holder_name, d.ifsc, d.account_no, d.bank_name, d.upi_id,
-                dc.opening_due, dc.opening_due_date,
+                dc.distributor_number, dc.opening_due, dc.opening_due_date,
                 a.street, a.locality, a.city, a.state, a.pincode,
                 COALESCE((SELECT SUM(cr.amount) FROM distributor_credits cr
                           WHERE cr.distributor_id = d.id AND cr.company_id = $2), 0)::numeric(12,2) AS total_credits,
@@ -151,12 +152,19 @@ export const distributorTools = [
            args.accountNo ?? null, args.bankName ?? null, args.gstin ?? null, args.upiId ?? null]
         );
 
-        // Insert distributor-company link with opening due
+        // Atomically increment distributor counter and get the assigned number
+        const { rows: counterRows } = await client.query(
+          `UPDATE companies SET distributor_counter = distributor_counter + 1 WHERE id = $1 RETURNING distributor_counter - 1 AS num`,
+          [companyId]
+        );
+        const distributorNumber = counterRows[0]?.num ?? null;
+
+        // Insert distributor-company link with opening due and number
         const openingDueDate = args.openingDueDate ? new Date(args.openingDueDate).toISOString() : null;
         await client.query(
-          `INSERT INTO distributor_companies (distributor_id, company_id, opening_due, opening_due_date)
-           VALUES ($1, $2, $3, $4)`,
-          [id, companyId, args.openingDue ?? 0, openingDueDate]
+          `INSERT INTO distributor_companies (distributor_id, company_id, distributor_number, opening_due, opening_due_date)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, companyId, distributorNumber, args.openingDue ?? 0, openingDueDate]
         );
 
         // Insert address if any address field provided
@@ -400,15 +408,22 @@ export const distributorTools = [
       const id = crypto.randomUUID();
       const createdAt = args.date ? new Date(args.date).toISOString() : new Date().toISOString();
 
+      // Atomically increment distributor payment counter
+      const { rows: counterRows } = await pool.query(
+        `UPDATE companies SET distributor_payment_counter = distributor_payment_counter + 1 WHERE id = $1 RETURNING distributor_payment_counter - 1 AS num`,
+        [companyId]
+      );
+      const paymentNo = counterRows[0]?.num ?? null;
+
       await pool.query(
-        `INSERT INTO distributor_payments (id, distributor_id, company_id, amount, payment_type, remarks, bill_no, created_at, purchase_order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [id, args.distributorId, companyId, args.amount,
+        `INSERT INTO distributor_payments (id, distributor_id, company_id, payment_no, amount, payment_type, remarks, bill_no, created_at, purchase_order_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [id, args.distributorId, companyId, paymentNo, args.amount,
          args.paymentType ?? 'CASH', args.remarks ?? null, args.billNo ?? null,
          createdAt, args.purchaseOrderId ?? null]
       );
 
-      return { success: true, paymentId: id, amount: args.amount, paymentType: args.paymentType ?? 'CASH' };
+      return { success: true, paymentId: id, paymentNo, amount: args.amount, paymentType: args.paymentType ?? 'CASH' };
     },
   },
 
@@ -416,16 +431,25 @@ export const distributorTools = [
 
   {
     name: 'create_distributor_credit',
-    description: 'Record a credit (amount owed) to a distributor. Increases the amount due. Use this when the company owes money to the distributor (e.g. for goods received).',
+    description: `Record a credit (amount owed) to a distributor. Increases the amount due.
+
+creditKind:
+  - PRODUCT (default) — distributor extended us product/goods credit. No cash/bank movement.
+  - AMOUNT — distributor sent us actual money (refund/advance/loan). Creates a linked MoneyTransaction (partyType=SUPPLIER, direction=RECEIVED, status=PAID) so cash/bank ledgers, opening/closing balances, and reports update automatically. AMOUNT credits are excluded from GST ITC reports.
+
+For AMOUNT: paymentMode is required (CASH or BANK). When BANK, optionally set bankAccountId for a secondary bank — leave empty for the primary bank.`,
     inputSchema: {
       type: 'object' as const,
       properties: {
         distributorId: { type: 'string', description: 'Distributor UUID' },
         amount: { type: 'number', description: 'Credit amount' },
         remarks: { type: 'string' },
-        billNo: { type: 'string' },
+        billNo: { type: 'string', description: 'Bill number (PRODUCT mode only)' },
         date: { type: 'string', description: 'Credit date (ISO string). Defaults to now' },
-        purchaseOrderId: { type: 'string', description: 'Link credit to a specific purchase order' },
+        purchaseOrderId: { type: 'string', description: 'Link credit to a specific purchase order (PRODUCT mode only)' },
+        creditKind: { type: 'string', enum: ['PRODUCT', 'AMOUNT'], description: 'Default: PRODUCT' },
+        paymentMode: { type: 'string', enum: ['CASH', 'BANK'], description: 'Required when creditKind=AMOUNT. Default: CASH' },
+        bankAccountId: { type: 'string', description: 'Secondary bank UUID (only when creditKind=AMOUNT and paymentMode=BANK). Omit for primary bank.' },
         companyId: { type: 'string' },
       },
       required: ['distributorId', 'amount'],
@@ -433,17 +457,28 @@ export const distributorTools = [
     handler: async (args: {
       distributorId: string; amount: number; remarks?: string;
       billNo?: string; date?: string; purchaseOrderId?: string; companyId?: string;
+      creditKind?: 'PRODUCT' | 'AMOUNT'; paymentMode?: 'CASH' | 'BANK'; bankAccountId?: string;
     }) => {
       const companyId = cid(args);
+      const creditKind = args.creditKind ?? 'PRODUCT';
+      const isAmount = creditKind === 'AMOUNT';
 
       // Verify distributor-company link
       const { rows: link } = await pool.query(
-        `SELECT 1 FROM distributor_companies WHERE distributor_id = $1 AND company_id = $2`,
+        `SELECT d.name FROM distributor_companies dc
+         JOIN distributors d ON d.id = dc.distributor_id
+         WHERE dc.distributor_id = $1 AND dc.company_id = $2`,
         [args.distributorId, companyId]
       );
       if (!link.length) return { error: 'Distributor not found or not linked to this company' };
+      const distName = link[0].name as string;
 
-      // Verify PO if provided
+      // PO is meaningless for AMOUNT credits
+      if (isAmount && args.purchaseOrderId) {
+        return { error: 'purchaseOrderId is not allowed when creditKind=AMOUNT' };
+      }
+
+      // Verify PO if provided (PRODUCT mode)
       if (args.purchaseOrderId) {
         const { rows: po } = await pool.query(
           `SELECT 1 FROM purchase_orders WHERE id = $1 AND distributor_id = $2 AND company_id = $3`,
@@ -452,17 +487,70 @@ export const distributorTools = [
         if (!po.length) return { error: 'Purchase order not found or does not belong to this distributor' };
       }
 
+      // Verify bank account if provided (AMOUNT + BANK mode)
+      if (isAmount && args.bankAccountId) {
+        const { rows: ba } = await pool.query(
+          `SELECT 1 FROM bank_accounts WHERE id = $1 AND company_id = $2`,
+          [args.bankAccountId, companyId]
+        );
+        if (!ba.length) return { error: `Bank account "${args.bankAccountId}" not found` };
+      }
+
       const id = crypto.randomUUID();
       const createdAt = args.date ? new Date(args.date).toISOString() : new Date().toISOString();
 
-      await pool.query(
-        `INSERT INTO distributor_credits (id, distributor_id, company_id, amount, remarks, bill_no, created_at, purchase_order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, args.distributorId, companyId, args.amount,
-         args.remarks ?? null, args.billNo ?? null, createdAt, args.purchaseOrderId ?? null]
-      );
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      return { success: true, creditId: id, amount: args.amount };
+        // Atomically increment distributor credit counter
+        const { rows: counterRows } = await client.query(
+          `UPDATE companies SET distributor_credit_counter = distributor_credit_counter + 1 WHERE id = $1 RETURNING distributor_credit_counter - 1 AS num`,
+          [companyId]
+        );
+        const creditNo = counterRows[0]?.num ?? null;
+
+        let moneyTransactionId: string | null = null;
+
+        if (isAmount) {
+          const paymentMode = args.paymentMode ?? 'CASH';
+          const accountId = paymentMode === 'BANK' ? (args.bankAccountId ?? null) : null;
+          moneyTransactionId = crypto.randomUUID();
+          const note = `Distributor credit from ${distName}${args.remarks ? ': ' + args.remarks : ''}`;
+
+          await client.query(
+            `INSERT INTO money_transactions (id, company_id, party_type, direction, status, amount, payment_mode, account_id, note, created_at, updated_at)
+             VALUES ($1, $2, 'SUPPLIER', 'RECEIVED', 'PAID', $3, $4, $5, $6, $7, now())`,
+            [moneyTransactionId, companyId, args.amount, paymentMode, accountId, note, createdAt]
+          );
+        }
+
+        await client.query(
+          `INSERT INTO distributor_credits (id, distributor_id, company_id, credit_no, amount, remarks, bill_no, created_at, purchase_order_id, money_transaction_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [id, args.distributorId, companyId, creditNo, args.amount,
+           args.remarks ?? null,
+           isAmount ? null : (args.billNo ?? null),
+           createdAt,
+           args.purchaseOrderId ?? null,
+           moneyTransactionId]
+        );
+
+        await client.query('COMMIT');
+        return {
+          success: true,
+          creditId: id,
+          creditNo,
+          amount: args.amount,
+          creditKind,
+          ...(moneyTransactionId ? { moneyTransactionId } : {}),
+        };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   },
 ];

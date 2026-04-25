@@ -12,6 +12,7 @@ import { distributorTools } from './tools/distributors';
 import { statementTools } from './tools/statementMappings';
 import { reportTools } from './tools/reports';
 import { queryDbTools } from './tools/queryDb';
+import { settingsTools } from './tools/settings';
 export const allTools = [
   ...productTools,
   ...purchaseOrderTools,
@@ -24,6 +25,7 @@ export const allTools = [
   ...statementTools,
   ...reportTools,
   ...queryDbTools,
+  ...settingsTools,
 ];
 
 const handlerMap = new Map<string, (args: any) => Promise<unknown>>(

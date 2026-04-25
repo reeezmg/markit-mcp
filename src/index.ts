@@ -1069,6 +1069,25 @@ server.registerTool(
   async (args) => call('find_statement_mappings', args)
 );
 
+// ─── Report Tools ───────────────────────────────────────────────────────────
+
+server.registerTool(
+  'generate_report',
+  {
+    description: reportTools[0].description,
+    inputSchema: {
+      type: z.string().describe('Report type').pipe(z.enum(['sales', 'profit', 'expense', 'stock', 'gst1', 'distributor'])),
+      format: z.string().describe('Output format').pipe(z.enum(['pdf', 'excel'])),
+      startDate: z.string().optional().describe('Start date (ISO string). Defaults to start of current month.'),
+      endDate: z.string().optional().describe('End date (ISO string). Defaults to now.'),
+      companyId: z.string().optional(),
+      cleanup: z.boolean().optional().describe('If true, include bills with precedence=true. Default false.'),
+      isTaxIncluded: z.boolean().optional().describe('Whether prices include tax. Default true. Only affects GST report.'),
+    },
+  },
+  async (args) => call('generate_report', args)
+);
+
 // ─── Direct DB Query Tool ─────────────────────────────────────────────────────
 
 import { pool, COMPANY_ID } from './db';
@@ -1142,25 +1161,6 @@ Key tables (all have company_id for tenant scope):
       return { content: [{ type: 'text' as const, text: `Error: ${err.message}` }], isError: true };
     }
   }
-);
-
-// ─── Report Tools ───────────────────────────────────────────────────────────
-
-server.registerTool(
-  'generate_report',
-  {
-    description: reportTools[0].description,
-    inputSchema: {
-      type: z.string().describe('Report type').pipe(z.enum(['sales', 'profit', 'expense', 'stock', 'gst1', 'distributor'])),
-      format: z.string().describe('Output format').pipe(z.enum(['pdf', 'excel'])),
-      startDate: z.string().optional().describe('Start date (ISO string). Defaults to start of current month.'),
-      endDate: z.string().optional().describe('End date (ISO string). Defaults to now.'),
-      companyId: z.string().optional(),
-      cleanup: z.boolean().optional().describe('If true, include bills with precedence=true. Default false.'),
-      isTaxIncluded: z.boolean().optional().describe('Whether prices include tax. Default true. Only affects GST report.'),
-    },
-  },
-  async (args) => call('generate_report', args)
 );
 
 // Prevent uncaught errors from killing the stdio pipe

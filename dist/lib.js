@@ -107,7 +107,7 @@ var require_main = __commonJS({
     var fs = require("fs");
     var path2 = require("path");
     var os = require("os");
-    var crypto13 = require("crypto");
+    var crypto14 = require("crypto");
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -326,7 +326,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto13.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto14.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error) {
@@ -42594,7 +42594,7 @@ var require_data_validations = __commonJS({
 var require_encryptor = __commonJS({
   "node_modules/exceljs/lib/utils/encryptor.js"(exports2, module2) {
     "use strict";
-    var crypto13 = require("crypto");
+    var crypto14 = require("crypto");
     var Encryptor = {
       /**
        * Calculate a hash of the concatenated buffers with the given algorithm.
@@ -42602,7 +42602,7 @@ var require_encryptor = __commonJS({
        * @returns {Buffer} The hash
        */
       hash(algorithm, ...buffers) {
-        const hash = crypto13.createHash(algorithm);
+        const hash = crypto14.createHash(algorithm);
         hash.update(Buffer.concat(buffers));
         return hash.digest();
       },
@@ -42618,7 +42618,7 @@ var require_encryptor = __commonJS({
        */
       convertPasswordToHash(password, hashAlgorithm, saltValue, spinCount) {
         hashAlgorithm = hashAlgorithm.toLowerCase();
-        const hashes = crypto13.getHashes();
+        const hashes = crypto14.getHashes();
         if (hashes.indexOf(hashAlgorithm) < 0) {
           throw new Error(`Hash algorithm '${hashAlgorithm}' not supported!`);
         }
@@ -42636,7 +42636,7 @@ var require_encryptor = __commonJS({
        * @param size The size argument is a number indicating the number of bytes to generate.
        */
       randomBytes(size) {
-        return crypto13.randomBytes(size);
+        return crypto14.randomBytes(size);
       }
     };
     module2.exports = Encryptor;
@@ -102995,7 +102995,7 @@ var require_tmp = __commonJS({
     var fs = require("fs");
     var os = require("os");
     var path2 = require("path");
-    var crypto13 = require("crypto");
+    var crypto14 = require("crypto");
     var _c = { fs: fs.constants, os: os.constants };
     var RANDOM_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     var TEMPLATE_PATTERN = /XXXXXX/;
@@ -103175,9 +103175,9 @@ var require_tmp = __commonJS({
     function _randomChars(howMany) {
       let value = [], rnd = null;
       try {
-        rnd = crypto13.randomBytes(howMany);
+        rnd = crypto14.randomBytes(howMany);
       } catch (e) {
-        rnd = crypto13.pseudoRandomBytes(howMany);
+        rnd = crypto14.pseudoRandomBytes(howMany);
       }
       for (let i = 0; i < howMany; i++) {
         value.push(RANDOM_CHARS[rnd[i] % RANDOM_CHARS.length]);
@@ -105465,7 +105465,7 @@ var expenseTools = [
         wheres.push(`e.expense_date <= $${params.length}::timestamptz`);
       }
       const { rows } = await pool.query(
-        `SELECT e.id, e.expense_date, e.note, e.payment_mode, e.status,
+        `SELECT e.id, e.expense_number, e.expense_date, e.note, e.payment_mode, e.status,
                 e.total_amount, e.tax_amount, e.currency, e.created_at,
                 ec.id AS category_id, ec.name AS category_name,
                 cu.name AS user_name, cu.phone AS user_phone, e.from_id AS user_id
@@ -105559,12 +105559,18 @@ FLOW:
       const expenseDate = args.date ? new Date(args.date).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
       const paymentMode = args.paymentMode ?? "CASH";
       const status = args.status ?? "Paid";
+      const { rows: counterRows } = await pool.query(
+        `UPDATE companies SET expense_counter = expense_counter + 1 WHERE id = $1 RETURNING expense_counter - 1 AS num`,
+        [companyId]
+      );
+      const expenseNumber = counterRows[0]?.num ?? null;
       await pool.query(
-        `INSERT INTO expenses (id, expense_date, note, payment_mode, status, total_amount,
+        `INSERT INTO expenses (id, expense_number, expense_date, note, payment_mode, status, total_amount,
           expense_category_id, company_id, from_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())`,
         [
           id,
+          expenseNumber,
           expenseDate,
           args.note ?? null,
           paymentMode,
@@ -105576,7 +105582,7 @@ FLOW:
         ]
       );
       const { rows: created } = await pool.query(
-        `SELECT e.id, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
+        `SELECT e.id, e.expense_number, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
                 ec.name AS category_name
          FROM expenses e
          LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
@@ -105664,7 +105670,7 @@ FLOW:
         params
       );
       const { rows } = await pool.query(
-        `SELECT e.id, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
+        `SELECT e.id, e.expense_number, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
                 ec.name AS category_name, e.from_id AS user_id
          FROM expenses e
          LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
@@ -107124,6 +107130,7 @@ var distributorTools = [
       }
       const { rows } = await pool.query(
         `SELECT d.id, d.name, d.status, d.gstin,
+                dc.distributor_number,
                 dc.opening_due,
                 dc.opening_due_date,
                 COUNT(DISTINCT po.id)::int AS po_count,
@@ -107141,7 +107148,7 @@ var distributorTools = [
          JOIN distributors d ON dc.distributor_id = d.id
          LEFT JOIN purchase_orders po ON po.distributor_id = d.id AND po.company_id = dc.company_id
          WHERE dc.company_id = $1 ${nameFilter}
-         GROUP BY d.id, d.name, d.status, d.gstin, dc.opening_due, dc.opening_due_date
+         GROUP BY d.id, d.name, d.status, d.gstin, dc.distributor_number, dc.opening_due, dc.opening_due_date
          ORDER BY d.name`,
         params
       );
@@ -107165,7 +107172,7 @@ var distributorTools = [
       const { rows } = await pool.query(
         `SELECT d.id, d.name, d.status, d.gstin,
                 d.acc_holder_name, d.ifsc, d.account_no, d.bank_name, d.upi_id,
-                dc.opening_due, dc.opening_due_date,
+                dc.distributor_number, dc.opening_due, dc.opening_due_date,
                 a.street, a.locality, a.city, a.state, a.pincode,
                 COALESCE((SELECT SUM(cr.amount) FROM distributor_credits cr
                           WHERE cr.distributor_id = d.id AND cr.company_id = $2), 0)::numeric(12,2) AS total_credits,
@@ -107242,11 +107249,16 @@ var distributorTools = [
             args.upiId ?? null
           ]
         );
+        const { rows: counterRows } = await client.query(
+          `UPDATE companies SET distributor_counter = distributor_counter + 1 WHERE id = $1 RETURNING distributor_counter - 1 AS num`,
+          [companyId]
+        );
+        const distributorNumber = counterRows[0]?.num ?? null;
         const openingDueDate = args.openingDueDate ? new Date(args.openingDueDate).toISOString() : null;
         await client.query(
-          `INSERT INTO distributor_companies (distributor_id, company_id, opening_due, opening_due_date)
-           VALUES ($1, $2, $3, $4)`,
-          [id, companyId, args.openingDue ?? 0, openingDueDate]
+          `INSERT INTO distributor_companies (distributor_id, company_id, distributor_number, opening_due, opening_due_date)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, companyId, distributorNumber, args.openingDue ?? 0, openingDueDate]
         );
         const hasAddress = args.street || args.locality || args.city || args.state || args.pincode;
         if (hasAddress) {
@@ -107464,13 +107476,19 @@ var distributorTools = [
       }
       const id = import_crypto8.default.randomUUID();
       const createdAt = args.date ? new Date(args.date).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
+      const { rows: counterRows } = await pool.query(
+        `UPDATE companies SET distributor_payment_counter = distributor_payment_counter + 1 WHERE id = $1 RETURNING distributor_payment_counter - 1 AS num`,
+        [companyId]
+      );
+      const paymentNo = counterRows[0]?.num ?? null;
       await pool.query(
-        `INSERT INTO distributor_payments (id, distributor_id, company_id, amount, payment_type, remarks, bill_no, created_at, purchase_order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO distributor_payments (id, distributor_id, company_id, payment_no, amount, payment_type, remarks, bill_no, created_at, purchase_order_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           id,
           args.distributorId,
           companyId,
+          paymentNo,
           args.amount,
           args.paymentType ?? "CASH",
           args.remarks ?? null,
@@ -107479,33 +107497,50 @@ var distributorTools = [
           args.purchaseOrderId ?? null
         ]
       );
-      return { success: true, paymentId: id, amount: args.amount, paymentType: args.paymentType ?? "CASH" };
+      return { success: true, paymentId: id, paymentNo, amount: args.amount, paymentType: args.paymentType ?? "CASH" };
     }
   },
   // ─── Create Distributor Credit ────────────────────────────────────────────────
   {
     name: "create_distributor_credit",
-    description: "Record a credit (amount owed) to a distributor. Increases the amount due. Use this when the company owes money to the distributor (e.g. for goods received).",
+    description: `Record a credit (amount owed) to a distributor. Increases the amount due.
+
+creditKind:
+  - PRODUCT (default) \u2014 distributor extended us product/goods credit. No cash/bank movement.
+  - AMOUNT \u2014 distributor sent us actual money (refund/advance/loan). Creates a linked MoneyTransaction (partyType=SUPPLIER, direction=RECEIVED, status=PAID) so cash/bank ledgers, opening/closing balances, and reports update automatically. AMOUNT credits are excluded from GST ITC reports.
+
+For AMOUNT: paymentMode is required (CASH or BANK). When BANK, optionally set bankAccountId for a secondary bank \u2014 leave empty for the primary bank.`,
     inputSchema: {
       type: "object",
       properties: {
         distributorId: { type: "string", description: "Distributor UUID" },
         amount: { type: "number", description: "Credit amount" },
         remarks: { type: "string" },
-        billNo: { type: "string" },
+        billNo: { type: "string", description: "Bill number (PRODUCT mode only)" },
         date: { type: "string", description: "Credit date (ISO string). Defaults to now" },
-        purchaseOrderId: { type: "string", description: "Link credit to a specific purchase order" },
+        purchaseOrderId: { type: "string", description: "Link credit to a specific purchase order (PRODUCT mode only)" },
+        creditKind: { type: "string", enum: ["PRODUCT", "AMOUNT"], description: "Default: PRODUCT" },
+        paymentMode: { type: "string", enum: ["CASH", "BANK"], description: "Required when creditKind=AMOUNT. Default: CASH" },
+        bankAccountId: { type: "string", description: "Secondary bank UUID (only when creditKind=AMOUNT and paymentMode=BANK). Omit for primary bank." },
         companyId: { type: "string" }
       },
       required: ["distributorId", "amount"]
     },
     handler: async (args) => {
       const companyId = cid8(args);
+      const creditKind = args.creditKind ?? "PRODUCT";
+      const isAmount = creditKind === "AMOUNT";
       const { rows: link } = await pool.query(
-        `SELECT 1 FROM distributor_companies WHERE distributor_id = $1 AND company_id = $2`,
+        `SELECT d.name FROM distributor_companies dc
+         JOIN distributors d ON d.id = dc.distributor_id
+         WHERE dc.distributor_id = $1 AND dc.company_id = $2`,
         [args.distributorId, companyId]
       );
       if (!link.length) return { error: "Distributor not found or not linked to this company" };
+      const distName = link[0].name;
+      if (isAmount && args.purchaseOrderId) {
+        return { error: "purchaseOrderId is not allowed when creditKind=AMOUNT" };
+      }
       if (args.purchaseOrderId) {
         const { rows: po } = await pool.query(
           `SELECT 1 FROM purchase_orders WHERE id = $1 AND distributor_id = $2 AND company_id = $3`,
@@ -107513,23 +107548,66 @@ var distributorTools = [
         );
         if (!po.length) return { error: "Purchase order not found or does not belong to this distributor" };
       }
+      if (isAmount && args.bankAccountId) {
+        const { rows: ba } = await pool.query(
+          `SELECT 1 FROM bank_accounts WHERE id = $1 AND company_id = $2`,
+          [args.bankAccountId, companyId]
+        );
+        if (!ba.length) return { error: `Bank account "${args.bankAccountId}" not found` };
+      }
       const id = import_crypto8.default.randomUUID();
       const createdAt = args.date ? new Date(args.date).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
-      await pool.query(
-        `INSERT INTO distributor_credits (id, distributor_id, company_id, amount, remarks, bill_no, created_at, purchase_order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          id,
-          args.distributorId,
-          companyId,
-          args.amount,
-          args.remarks ?? null,
-          args.billNo ?? null,
-          createdAt,
-          args.purchaseOrderId ?? null
-        ]
-      );
-      return { success: true, creditId: id, amount: args.amount };
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const { rows: counterRows } = await client.query(
+          `UPDATE companies SET distributor_credit_counter = distributor_credit_counter + 1 WHERE id = $1 RETURNING distributor_credit_counter - 1 AS num`,
+          [companyId]
+        );
+        const creditNo = counterRows[0]?.num ?? null;
+        let moneyTransactionId = null;
+        if (isAmount) {
+          const paymentMode = args.paymentMode ?? "CASH";
+          const accountId = paymentMode === "BANK" ? args.bankAccountId ?? null : null;
+          moneyTransactionId = import_crypto8.default.randomUUID();
+          const note = `Distributor credit from ${distName}${args.remarks ? ": " + args.remarks : ""}`;
+          await client.query(
+            `INSERT INTO money_transactions (id, company_id, party_type, direction, status, amount, payment_mode, account_id, note, created_at, updated_at)
+             VALUES ($1, $2, 'SUPPLIER', 'RECEIVED', 'PAID', $3, $4, $5, $6, $7, now())`,
+            [moneyTransactionId, companyId, args.amount, paymentMode, accountId, note, createdAt]
+          );
+        }
+        await client.query(
+          `INSERT INTO distributor_credits (id, distributor_id, company_id, credit_no, amount, remarks, bill_no, created_at, purchase_order_id, money_transaction_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            id,
+            args.distributorId,
+            companyId,
+            creditNo,
+            args.amount,
+            args.remarks ?? null,
+            isAmount ? null : args.billNo ?? null,
+            createdAt,
+            args.purchaseOrderId ?? null,
+            moneyTransactionId
+          ]
+        );
+        await client.query("COMMIT");
+        return {
+          success: true,
+          creditId: id,
+          creditNo,
+          amount: args.amount,
+          creditKind,
+          ...moneyTransactionId ? { moneyTransactionId } : {}
+        };
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
     }
   }
 ];
@@ -110559,6 +110637,527 @@ var queryDbTools = [
   }
 ];
 
+// src/tools/settings.ts
+var import_crypto13 = __toESM(require("crypto"));
+var cid11 = (args) => args.companyId ?? COMPANY_ID;
+function buildSets(fieldMap, params) {
+  const sets = [];
+  for (const [col, val] of Object.entries(fieldMap)) {
+    if (val !== void 0) {
+      params.push(val);
+      sets.push(`"${col}" = $${params.length}`);
+    }
+  }
+  return sets;
+}
+var settingsTools = [
+  // ─── Get Settings ────────────────────────────────────────────────────────────
+  {
+    name: "get_settings",
+    description: `Get all current company settings in one call. Returns store identity, policies, billing config, delivery config, business hours, bank details, opening balance, feature toggles, address, product inputs, and variant inputs.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const { rows: companyRows } = await pool.query(
+        `SELECT
+           c.name, c.store_unique_name, c.phone, c.logo, c.category, c.description,
+           c.thank_you_note, c.refund_policy, c.return_policy,
+           c.is_tax_included, c.is_cost_included, c.points_value,
+           c.delivery_type, c.delivery_mode, c.fund_delivery_fees,
+           c.delivery_radius, c.delivery_fees_per_km, c.waiting_time,
+           c.waiting_charges_per_min, c.min_delivery_charges,
+           c.delivery_discount_threshold, c.delivery_discount_amount,
+           c.open_time, c.close_time,
+           c.acc_holder_name, c.ifsc, c.account_no, c.bank_name, c.upi_id, c.gstin,
+           c.cash, c.bank, c.opening_cash_date, c.opening_bank_date,
+           c.is_ai_image, c.is_usertrack_included,
+           c.printer_label_size
+         FROM companies c
+         WHERE c.id = $1`,
+        [companyId]
+      );
+      if (!companyRows.length) return { error: "Company not found" };
+      const c = companyRows[0];
+      const { rows: addrRows } = await pool.query(
+        `SELECT name, street, landmark, city, state, pincode,
+                formatted_address, place_id, lat, lng
+         FROM addresses WHERE company_id = $1`,
+        [companyId]
+      );
+      const { rows: piRows } = await pool.query(
+        `SELECT name, brand, category, subcategory, description
+         FROM product_inputs WHERE company_id = $1`,
+        [companyId]
+      );
+      const { rows: viRows } = await pool.query(
+        `SELECT name, code, sprice, pprice, dprice, discount, qty, sizes, images, button
+         FROM variant_inputs WHERE company_id = $1`,
+        [companyId]
+      );
+      return {
+        storeIdentity: {
+          name: c.name,
+          storeUniqueName: c.store_unique_name,
+          phone: c.phone,
+          logo: c.logo,
+          category: c.category
+        },
+        policies: {
+          description: c.description,
+          thankYouNote: c.thank_you_note,
+          refundPolicy: c.refund_policy,
+          returnPolicy: c.return_policy
+        },
+        billing: {
+          isTaxIncluded: c.is_tax_included,
+          isCostIncluded: c.is_cost_included,
+          pointsValue: c.points_value
+        },
+        delivery: {
+          deliveryType: c.delivery_type,
+          deliveryMode: c.delivery_mode,
+          fundDeliveryFees: c.fund_delivery_fees,
+          deliveryRadius: c.delivery_radius,
+          deliveryFeesPerKm: c.delivery_fees_per_km,
+          waitingTime: c.waiting_time,
+          waitingChargesPerMin: c.waiting_charges_per_min,
+          minDeliveryCharges: c.min_delivery_charges,
+          deliveryDiscountThreshold: c.delivery_discount_threshold,
+          deliveryDiscountAmount: c.delivery_discount_amount
+        },
+        businessHours: {
+          openTime: c.open_time,
+          closeTime: c.close_time
+        },
+        bankDetails: {
+          accHolderName: c.acc_holder_name,
+          ifsc: c.ifsc,
+          accountNo: c.account_no,
+          bankName: c.bank_name,
+          upiId: c.upi_id,
+          gstin: c.gstin
+        },
+        openingBalance: {
+          cash: c.cash,
+          bank: c.bank,
+          openingCashDate: c.opening_cash_date,
+          openingBankDate: c.opening_bank_date
+        },
+        featureToggles: {
+          isAiImage: c.is_ai_image,
+          isUserTrackIncluded: c.is_usertrack_included
+        },
+        printerSettings: {
+          printerLabelSize: c.printer_label_size
+        },
+        address: addrRows[0] ?? null,
+        productInputs: piRows[0] ?? null,
+        variantInputs: viRows[0] ?? null
+      };
+    }
+  },
+  // ─── Update Store Identity ───────────────────────────────────────────────────
+  {
+    name: "update_store_identity",
+    description: "Update store identity fields: unique name (URL slug), phone number, logo key, and categories.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        storeUniqueName: { type: "string", description: "Unique store URL slug" },
+        phone: { type: "string", description: "Store phone number" },
+        logo: { type: "string", description: "Logo image key (S3 UUID)" },
+        category: { type: "array", items: { type: "string" }, description: 'Store categories (e.g. ["Men","Women"])' },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        store_unique_name: args.storeUniqueName,
+        phone: args.phone,
+        logo: args.logo,
+        category: args.category
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { storeUniqueName: args.storeUniqueName, phone: args.phone, logo: args.logo, category: args.category } };
+    }
+  },
+  // ─── Update Store Policies ───────────────────────────────────────────────────
+  {
+    name: "update_store_policies",
+    description: "Update store description, thank you note, refund policy, and return policy.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: { type: "string", description: "Store description (max 40 chars)" },
+        thankYouNote: { type: "string", description: "Thank you note shown after order completion" },
+        refundPolicy: { type: "string", description: "Refund policy text" },
+        returnPolicy: { type: "string", description: "Return policy text" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        description: args.description,
+        thank_you_note: args.thankYouNote,
+        refund_policy: args.refundPolicy,
+        return_policy: args.returnPolicy
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { description: args.description, thankYouNote: args.thankYouNote, refundPolicy: args.refundPolicy, returnPolicy: args.returnPolicy } };
+    }
+  },
+  // ─── Update Billing Settings ─────────────────────────────────────────────────
+  {
+    name: "update_billing_settings",
+    description: "Update billing configuration: tax inclusion, cost visibility in bills, and loyalty points value.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        isTaxIncluded: { type: "boolean", description: "Whether prices include tax" },
+        isCostIncluded: { type: "boolean", description: "Whether cost is shown in bills" },
+        pointsValue: { type: "number", description: "Value of 1 loyalty point in currency" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        is_tax_included: args.isTaxIncluded,
+        is_cost_included: args.isCostIncluded,
+        points_value: args.pointsValue
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { isTaxIncluded: args.isTaxIncluded, isCostIncluded: args.isCostIncluded, pointsValue: args.pointsValue } };
+    }
+  },
+  // ─── Update Delivery Settings ────────────────────────────────────────────────
+  {
+    name: "update_delivery_settings",
+    description: `Update delivery configuration: delivery types, modes, radius, fees, waiting charges, and discount thresholds.
+Delivery types: trynbuy, booking, delivery (array).
+Delivery modes: markit, self (array).`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        deliveryType: { type: "array", items: { type: "string" }, description: "Delivery types: trynbuy, booking, delivery" },
+        deliveryMode: { type: "array", items: { type: "string" }, description: "Delivery modes: markit, self" },
+        fundDeliveryFees: { type: "boolean", description: "Whether store pays customer delivery fees (markit mode)" },
+        deliveryRadius: { type: "number", description: "Delivery radius in km" },
+        deliveryFeesPerKm: { type: "number", description: "Delivery fee per km (self mode)" },
+        waitingTime: { type: "number", description: "Free waiting time in minutes (self mode)" },
+        waitingChargesPerMin: { type: "number", description: "Charge per minute after free waiting (self mode)" },
+        minDeliveryCharges: { type: "number", description: "Minimum delivery charge (self mode)" },
+        deliveryDiscountThreshold: { type: "number", description: "Order amount threshold for delivery discount" },
+        deliveryDiscountAmount: { type: "number", description: "Discount amount per threshold" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        delivery_type: args.deliveryType,
+        delivery_mode: args.deliveryMode,
+        fund_delivery_fees: args.fundDeliveryFees,
+        delivery_radius: args.deliveryRadius,
+        delivery_fees_per_km: args.deliveryFeesPerKm,
+        waiting_time: args.waitingTime,
+        waiting_charges_per_min: args.waitingChargesPerMin,
+        min_delivery_charges: args.minDeliveryCharges,
+        delivery_discount_threshold: args.deliveryDiscountThreshold,
+        delivery_discount_amount: args.deliveryDiscountAmount
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: args };
+    }
+  },
+  // ─── Update Business Hours ───────────────────────────────────────────────────
+  {
+    name: "update_business_hours",
+    description: "Update store opening and closing times.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        openTime: { type: "string", description: 'Opening time (e.g. "9:30")' },
+        closeTime: { type: "string", description: 'Closing time (e.g. "21:00")' },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        open_time: args.openTime,
+        close_time: args.closeTime
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { openTime: args.openTime, closeTime: args.closeTime } };
+    }
+  },
+  // ─── Update Bank Details ─────────────────────────────────────────────────────
+  {
+    name: "update_bank_details",
+    description: "Update company bank account details, UPI ID, and GSTIN for payment settlements.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        accHolderName: { type: "string", description: "Bank account holder name" },
+        ifsc: { type: "string", description: "IFSC code" },
+        accountNo: { type: "string", description: "Bank account number" },
+        bankName: { type: "string", description: "Bank name" },
+        upiId: { type: "string", description: "UPI ID" },
+        gstin: { type: "string", description: "GSTIN number" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        acc_holder_name: args.accHolderName,
+        ifsc: args.ifsc,
+        account_no: args.accountNo,
+        bank_name: args.bankName,
+        upi_id: args.upiId,
+        gstin: args.gstin
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { accHolderName: args.accHolderName, ifsc: args.ifsc, accountNo: args.accountNo, bankName: args.bankName, upiId: args.upiId, gstin: args.gstin } };
+    }
+  },
+  // ─── Update Opening Balance ──────────────────────────────────────────────────
+  {
+    name: "update_opening_balance",
+    description: "Update store opening balance for cash and bank.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cash: { type: "number", description: "Opening cash balance" },
+        bank: { type: "number", description: "Opening bank balance" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        cash: args.cash,
+        bank: args.bank
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { cash: args.cash, bank: args.bank } };
+    }
+  },
+  // ─── Update Store Address ────────────────────────────────────────────────────
+  {
+    name: "update_store_address",
+    description: "Create or update the store address. Uses upsert \u2014 if an address exists for this company it updates, otherwise it creates one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Location name" },
+        street: { type: "string", description: "Street address" },
+        landmark: { type: "string", description: "Landmark" },
+        city: { type: "string", description: "City" },
+        state: { type: "string", description: "State" },
+        pincode: { type: "string", description: "Pincode" },
+        lat: { type: "number", description: "Latitude" },
+        lng: { type: "number", description: "Longitude" },
+        placeId: { type: "string", description: "Google Place ID" },
+        formattedAddress: { type: "string", description: "Full formatted address" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const id = import_crypto13.default.randomUUID();
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM addresses WHERE company_id = $1`,
+        [companyId]
+      );
+      if (existing.length) {
+        const params = [companyId];
+        const sets = buildSets({
+          name: args.name,
+          street: args.street,
+          landmark: args.landmark,
+          city: args.city,
+          state: args.state,
+          pincode: args.pincode,
+          lat: args.lat,
+          lng: args.lng,
+          place_id: args.placeId,
+          formatted_address: args.formattedAddress
+        }, params);
+        if (!sets.length) return { error: "No fields provided to update" };
+        sets.push(`updated_at = now()`);
+        await pool.query(`UPDATE addresses SET ${sets.join(", ")} WHERE company_id = $1`, params);
+        return { success: true, action: "updated", addressId: existing[0].id };
+      } else {
+        await pool.query(
+          `INSERT INTO addresses (id, company_id, name, street, landmark, city, state, pincode, lat, lng, place_id, formatted_address, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())`,
+          [
+            id,
+            companyId,
+            args.name ?? null,
+            args.street ?? null,
+            args.landmark ?? null,
+            args.city ?? null,
+            args.state ?? null,
+            args.pincode ?? null,
+            args.lat ?? null,
+            args.lng ?? null,
+            args.placeId ?? null,
+            args.formattedAddress ?? null
+          ]
+        );
+        return { success: true, action: "created", addressId: id };
+      }
+    }
+  },
+  // ─── Update Feature Toggles ──────────────────────────────────────────────────
+  {
+    name: "update_feature_toggles",
+    description: "Toggle optional store features: AI image generation and user sales tracking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        isAiImage: { type: "boolean", description: "Enable AI image generation" },
+        isUserTrackIncluded: { type: "boolean", description: "Enable user sales tracking" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        is_ai_image: args.isAiImage,
+        is_usertrack_included: args.isUserTrackIncluded
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      sets.push(`updated_at = now()`);
+      await pool.query(`UPDATE companies SET ${sets.join(", ")} WHERE id = $1`, params);
+      return { success: true, updated: { isAiImage: args.isAiImage, isUserTrackIncluded: args.isUserTrackIncluded } };
+    }
+  },
+  // ─── Update Product Inputs ───────────────────────────────────────────────────
+  {
+    name: "update_product_inputs",
+    description: "Set which product fields are visible when adding products. All fields are booleans.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "boolean", description: "Show product name field" },
+        brand: { type: "boolean", description: "Show brand field" },
+        category: { type: "boolean", description: "Show category field" },
+        subcategory: { type: "boolean", description: "Show subcategory field" },
+        description: { type: "boolean", description: "Show description field" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        name: args.name,
+        brand: args.brand,
+        category: args.category,
+        subcategory: args.subcategory,
+        description: args.description
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      await pool.query(`UPDATE product_inputs SET ${sets.join(", ")} WHERE company_id = $1`, params);
+      return { success: true, updated: { name: args.name, brand: args.brand, category: args.category, subcategory: args.subcategory, description: args.description } };
+    }
+  },
+  // ─── Update Variant Inputs ───────────────────────────────────────────────────
+  {
+    name: "update_variant_inputs",
+    description: "Set which variant fields are visible when adding variants. All fields are booleans.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "boolean", description: "Show variant name field" },
+        code: { type: "boolean", description: "Show code field" },
+        sprice: { type: "boolean", description: "Show selling price field" },
+        pprice: { type: "boolean", description: "Show purchase price field" },
+        dprice: { type: "boolean", description: "Show discount price field" },
+        discount: { type: "boolean", description: "Show discount field" },
+        qty: { type: "boolean", description: "Show quantity field" },
+        sizes: { type: "boolean", description: "Show sizes field" },
+        images: { type: "boolean", description: "Show images field" },
+        button: { type: "boolean", description: "Show button field" },
+        companyId: { type: "string" }
+      }
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      const params = [companyId];
+      const sets = buildSets({
+        name: args.name,
+        code: args.code,
+        sprice: args.sprice,
+        pprice: args.pprice,
+        dprice: args.dprice,
+        discount: args.discount,
+        qty: args.qty,
+        sizes: args.sizes,
+        images: args.images,
+        button: args.button
+      }, params);
+      if (!sets.length) return { error: "No fields provided to update" };
+      await pool.query(`UPDATE variant_inputs SET ${sets.join(", ")} WHERE company_id = $1`, params);
+      return { success: true, updated: args };
+    }
+  },
+  // ─── Update Printer Settings ─────────────────────────────────────────────────
+  {
+    name: "update_printer_settings",
+    description: 'Update printer label size. Options: "50x25mm", "50x38 mm".',
+    inputSchema: {
+      type: "object",
+      properties: {
+        printerLabelSize: { type: "string", description: 'Label size: "50x25mm" or "50x38 mm"' },
+        companyId: { type: "string" }
+      },
+      required: ["printerLabelSize"]
+    },
+    handler: async (args) => {
+      const companyId = cid11(args);
+      await pool.query(
+        `UPDATE companies SET printer_label_size = $2, updated_at = now() WHERE id = $1`,
+        [companyId, args.printerLabelSize]
+      );
+      return { success: true, updated: { printerLabelSize: args.printerLabelSize } };
+    }
+  }
+];
+
 // src/lib.ts
 var allTools = [
   ...productTools,
@@ -110571,7 +111170,8 @@ var allTools = [
   ...distributorTools,
   ...statementTools,
   ...reportTools,
-  ...queryDbTools
+  ...queryDbTools,
+  ...settingsTools
 ];
 var handlerMap = new Map(
   allTools.map((t) => [t.name, t.handler])

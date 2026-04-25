@@ -44,7 +44,7 @@ export const expenseTools = [
       if (args.toDate) { params.push(args.toDate); wheres.push(`e.expense_date <= $${params.length}::timestamptz`); }
 
       const { rows } = await pool.query(
-        `SELECT e.id, e.expense_date, e.note, e.payment_mode, e.status,
+        `SELECT e.id, e.expense_number, e.expense_date, e.note, e.payment_mode, e.status,
                 e.total_amount, e.tax_amount, e.currency, e.created_at,
                 ec.id AS category_id, ec.name AS category_name,
                 cu.name AS user_name, cu.phone AS user_phone, e.from_id AS user_id
@@ -140,17 +140,24 @@ FLOW:
       const paymentMode = args.paymentMode ?? 'CASH';
       const status = args.status ?? 'Paid';
 
+      // Atomically increment expense counter and get the assigned number
+      const { rows: counterRows } = await pool.query(
+        `UPDATE companies SET expense_counter = expense_counter + 1 WHERE id = $1 RETURNING expense_counter - 1 AS num`,
+        [companyId]
+      );
+      const expenseNumber = counterRows[0]?.num ?? null;
+
       await pool.query(
-        `INSERT INTO expenses (id, expense_date, note, payment_mode, status, total_amount,
+        `INSERT INTO expenses (id, expense_number, expense_date, note, payment_mode, status, total_amount,
           expense_category_id, company_id, from_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())`,
-        [id, expenseDate, args.note ?? null, paymentMode, status, args.amount,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())`,
+        [id, expenseNumber, expenseDate, args.note ?? null, paymentMode, status, args.amount,
          categoryId, companyId, args.userId ?? null]
       );
 
       // Return created expense with category name
       const { rows: created } = await pool.query(
-        `SELECT e.id, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
+        `SELECT e.id, e.expense_number, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
                 ec.name AS category_name
          FROM expenses e
          LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
@@ -232,7 +239,7 @@ FLOW:
       );
 
       const { rows } = await pool.query(
-        `SELECT e.id, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
+        `SELECT e.id, e.expense_number, e.expense_date, e.total_amount, e.payment_mode, e.status, e.note,
                 ec.name AS category_name, e.from_id AS user_id
          FROM expenses e
          LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
